@@ -34,6 +34,42 @@ export const io = new SocketIOServer(server, {
 
 const games = new Map();
 
+const removeGameBySocketId = (socketId) => {
+  for (const [gameId, { creator, opponent }] of games.entries()) {
+    if (creator === socketId || opponent === socketId) {
+      games.delete(gameId);
+      console.log(`Game ${gameId} removed`);
+    }
+  }
+};
+
+const getGameIdBySocketId = (socketId) => {
+  for (const [gameId, { creator, opponent }] of games.entries()) {
+    if (creator === socketId || opponent === socketId) {
+      return gameId;
+    }
+  }
+};
+
+const getOppositeSocketId = (socketId) => {
+  for (const [gameId, { creator, opponent }] of games.entries()) {
+    if (creator === socketId) {
+      return opponent;
+    } else if (opponent === socketId) {
+      return creator;
+    }
+  }
+};
+
+const getParticipantsBySocketId = (socketId) => {
+  for (const [gameId, { creator, opponent }] of games.entries()) {
+    if (creator === socketId || opponent === socketId) {
+      return [creator, opponent];
+    }
+  }
+  return null; // Return null if no matching gameId is found
+};
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('A user connected', socket.id);
@@ -65,24 +101,94 @@ io.on('connection', (socket) => {
 
     console.log({ games });
 
+    socket.join(name);
+    io.to(name).emit('createGameRes', 'room broadcast');
     socket.emit('createGameRes', {
       success: true,
       data: games
     });
   });
 
-  // join game 
-  socket.on("joinGame", (data) => {
+  // join game
+  socket.on('joinGame', (data) => {
     const name = data.name;
     console.log('join game input ', name);
 
-    if(!games.get(name)) {
+    let game = games.get(name);
+    if (!game) {
       return socket.emit('joinGameRes', {
         success: false,
         message: 'game does not exist'
       });
     }
-  })
+
+    if (game.creator === socket.id) {
+      return socket.emit('joinGameRes', {
+        success: false,
+        message: 'you cannot join game created by you'
+      });
+    }
+
+    games.set(name, {
+      ...game,
+      opponent: socket.id
+    });
+
+    console.log({ games });
+
+    socket.join(name);
+    io.to(name).emit('opponentJoinGame', {
+      success: true
+    });
+    socket.emit('joinGameRes', {
+      success: true,
+      data: games
+    });
+
+    // set starting player
+    const players = ['x', 'o'];
+    const randomIndex = Math.floor(Math.random() * players.length);
+    const gameId = getGameIdBySocketId(socket.id);
+    io.to(gameId).emit('currentPlayer', players[randomIndex]);
+    game = games.get(gameId);
+    console.log('game', game);
+    console.log('game creator', game.creator);
+    io.to(gameId).emit('gameStart');
+    io.to(game.creator).emit('startPlayer');
+  });
+
+  // toggle
+  socket.on('toggle', (data) => {
+    console.log('toggle', data);
+    const oppositeSocketId = getOppositeSocketId(socket.id);
+
+    io.to(oppositeSocketId).emit('toggle', data);
+  });
+
+  // set current player
+  socket.on('currentPlayer', (data) => {
+    console.log('curr player', data);
+    const gameId = getGameIdBySocketId(socket.id);
+
+    let newData = data === 'o' ? 'o' : 'x';
+
+    io.to(gameId).emit('currentPlayer', newData);
+  });
+
+  // next game
+  socket.on('nextGame', () => {
+    const oppositeSocketId = getOppositeSocketId(socket.id);
+    io.to(oppositeSocketId).emit('nextGame');
+
+    const participants = getParticipantsBySocketId(socket.id);
+    const randomIndex = Math.floor(Math.random() * participants.length);
+    io.to(participants[randomIndex]).emit('startPlayer');
+  });
+
+  socket.on('endGame', () => {
+    const oppositeSocketId = getOppositeSocketId(socket.id);
+    io.to(oppositeSocketId).emit('endGame');
+  });
 
   // Disconnect event
   socket.on('disconnect', () => {
