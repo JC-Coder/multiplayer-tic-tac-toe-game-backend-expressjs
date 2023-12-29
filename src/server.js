@@ -208,16 +208,6 @@ io.on('connection', (socket) => {
     io.to(oppositeSocketId).emit('startingPlayer');
   });
 
-  // set current player
-  socket.on('currentPlayer', (data) => {
-    console.log('curr player', data);
-    const gameId = getGameIdBySocketId(socket.id);
-
-    let newData = data === 'o' ? 'o' : 'x';
-
-    io.to(gameId).emit('currentPlayer', newData);
-  });
-
   // next game
   socket.on('nextGame', (data) => {
     console.log('nextGame', data);
@@ -234,6 +224,9 @@ io.on('connection', (socket) => {
   socket.on('endGame', () => {
     const oppositeSocketId = getOppositeSocketId(socket.id);
     io.to(oppositeSocketId).emit('endGame');
+
+    const gameId = getGameIdBySocketId(socket.id);
+    games.delete(gameId);
   });
 
   // Disconnect event
