@@ -45,7 +45,7 @@ const removeGameBySocketId = (socketId) => {
 
 const getGameIdBySocketId = (socketId) => {
   for (const [gameId, { creator, opponent }] of games.entries()) {
-    if (creator === socketId || opponent === socketId) {
+    if (creator.socket === socketId || opponent.socket === socketId) {
       return gameId;
     }
   }
@@ -53,21 +53,28 @@ const getGameIdBySocketId = (socketId) => {
 
 const getOppositeSocketId = (socketId) => {
   for (const [gameId, { creator, opponent }] of games.entries()) {
-    if (creator === socketId) {
-      return opponent;
-    } else if (opponent === socketId) {
-      return creator;
+    if (creator.socket === socketId) {
+      return opponent.socket;
+    } else if (opponent.socket === socketId) {
+      return creator.socket;
     }
   }
 };
 
 const getParticipantsBySocketId = (socketId) => {
   for (const [gameId, { creator, opponent }] of games.entries()) {
-    if (creator === socketId || opponent === socketId) {
+    console.log({ gameId, creator, opponent });
+    if (creator.socket === socketId || opponent.socket === socketId) {
       return [creator, opponent];
     }
   }
   return null; // Return null if no matching gameId is found
+};
+
+const getRandomXorO = () => {
+  const data = ['x', 'o'];
+  const randomIndex = Math.floor(Math.random() * data.length);
+  return data[randomIndex];
 };
 
 // Socket.IO connection handling
@@ -94,9 +101,16 @@ io.on('connection', (socket) => {
       });
     }
 
+    const creatorGameId = getRandomXorO();
     games.set(data.name, {
-      creator: socket.id,
-      opponent: null
+      creator: {
+        socket: socket.id,
+        gameId: creatorGameId
+      },
+      opponent: {
+        socket: null,
+        gameId: creatorGameId === 'x' ? 'o' : 'x'
+      }
     });
 
     console.log({ games });
@@ -122,7 +136,16 @@ io.on('connection', (socket) => {
       });
     }
 
-    if (game.creator === socket.id) {
+    if (game) {
+      if (game.creator.socket && game.opponent.socket) {
+        return socket.emit('joinGameRes', {
+          success: false,
+          message: 'Game in progress'
+        });
+      }
+    }
+
+    if (game.creator.socket === socket.id) {
       return socket.emit('joinGameRes', {
         success: false,
         message: 'you cannot join game created by you'
@@ -131,30 +154,42 @@ io.on('connection', (socket) => {
 
     games.set(name, {
       ...game,
-      opponent: socket.id
+      opponent: {
+        ...game.opponent,
+        socket: socket.id
+      }
     });
 
     console.log({ games });
 
+    // join game
     socket.join(name);
     io.to(name).emit('opponentJoinGame', {
       success: true
     });
-    socket.emit('joinGameRes', {
+    io.to(name).emit('joinGameRes', {
       success: true,
       data: games
     });
 
     // set starting player
-    const players = ['x', 'o'];
-    const randomIndex = Math.floor(Math.random() * players.length);
     const gameId = getGameIdBySocketId(socket.id);
-    io.to(gameId).emit('currentPlayer', players[randomIndex]);
     game = games.get(gameId);
     console.log('game', game);
-    console.log('game creator', game.creator);
-    io.to(gameId).emit('gameStart');
-    io.to(game.creator).emit('startPlayer');
+
+    const participants = getParticipantsBySocketId(socket.id);
+    console.log('participants', participants);
+    setTimeout(() => {
+      io.to(game.creator.socket).emit('setPlayer', game.creator.gameId);
+      io.to(game.opponent.socket).emit('setPlayer', game.opponent.gameId);
+
+      const randomXorO = getRandomXorO();
+      io.to(
+        participants.filter(
+          (participant) => participant.gameId === randomXorO
+        )[0].socket
+      ).emit('startingPlayer');
+    }, 200);
   });
 
   // toggle
@@ -163,6 +198,14 @@ io.on('connection', (socket) => {
     const oppositeSocketId = getOppositeSocketId(socket.id);
 
     io.to(oppositeSocketId).emit('toggle', data);
+  });
+
+  // next player
+  socket.on('nextPlayer', () => {
+    console.log('nextPlayer');
+    const oppositeSocketId = getOppositeSocketId(socket.id);
+
+    io.to(oppositeSocketId).emit('startingPlayer');
   });
 
   // set current player
@@ -176,13 +219,16 @@ io.on('connection', (socket) => {
   });
 
   // next game
-  socket.on('nextGame', () => {
+  socket.on('nextGame', (data) => {
+    console.log('nextGame', data);
     const oppositeSocketId = getOppositeSocketId(socket.id);
     io.to(oppositeSocketId).emit('nextGame');
 
     const participants = getParticipantsBySocketId(socket.id);
-    const randomIndex = Math.floor(Math.random() * participants.length);
-    io.to(participants[randomIndex]).emit('startPlayer');
+    io.to(
+      participants.filter((participant) => participant.gameId !== data)[0]
+        .socket
+    ).emit('startingPlayer');
   });
 
   socket.on('endGame', () => {
