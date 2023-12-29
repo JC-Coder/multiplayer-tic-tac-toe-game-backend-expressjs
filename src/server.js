@@ -1,7 +1,6 @@
 import { ENVIRONMENT } from './common/config/environment.js';
 import express from 'express';
 import AppError from './common/utils/appError.js';
-import { setRoutes } from './modules/routes/index.js';
 import {
   catchAsync,
   handleError,
@@ -11,7 +10,6 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { stream } from './common/utils/logger.js';
 import morgan from 'morgan';
-import { connectDb } from './common/config/database.js';
 import { validateEnvs } from './common/validators/index.js';
 
 // Add the following imports for Socket.IO
@@ -262,11 +260,6 @@ app.use((req, res, next) => {
   next();
 });
 
-/**
- * Initialize routes
- */
-app.use('/', setRoutes());
-
 // catch 404 and forward to error handler
 app.all(
   '*',
@@ -299,5 +292,4 @@ server.listen(port, () => {
   console.log(
     '\n🎉🎉🎉🎉🎉🎉 App successfully started on port : ' + port + '  🎉🎉🎉🎉🎉'
   );
-  connectDb();
 });
