@@ -36,7 +36,6 @@ const removeGameBySocketId = (socketId) => {
   for (const [gameId, { creator, opponent }] of games.entries()) {
     if (creator === socketId || opponent === socketId) {
       games.delete(gameId);
-      console.log(`Game ${gameId} removed`);
     }
   }
 };
@@ -61,7 +60,6 @@ const getOppositeSocketId = (socketId) => {
 
 const getParticipantsBySocketId = (socketId) => {
   for (const [gameId, { creator, opponent }] of games.entries()) {
-    console.log({ gameId, creator, opponent });
     if (creator.socket === socketId || opponent.socket === socketId) {
       return [creator, opponent];
     }
@@ -83,7 +81,6 @@ io.on('connection', (socket) => {
   // create game
   socket.on('createGame', (data) => {
     const name = data.name;
-    console.log('createGame input', { data });
 
     if (!name || name.length < 2) {
       return socket.emit('createGameRes', {
@@ -111,8 +108,6 @@ io.on('connection', (socket) => {
       }
     });
 
-    console.log({ games });
-
     socket.join(name);
     io.to(name).emit('createGameRes', 'room broadcast');
     socket.emit('createGameRes', {
@@ -124,7 +119,6 @@ io.on('connection', (socket) => {
   // join game
   socket.on('joinGame', (data) => {
     const name = data.name;
-    console.log('join game input ', name);
 
     let game = games.get(name);
     if (!game) {
@@ -158,8 +152,6 @@ io.on('connection', (socket) => {
       }
     });
 
-    console.log({ games });
-
     // join game
     socket.join(name);
     io.to(name).emit('opponentJoinGame', {
@@ -173,7 +165,6 @@ io.on('connection', (socket) => {
     // set starting player
     const gameId = getGameIdBySocketId(socket.id);
     game = games.get(gameId);
-    console.log('game', game);
 
     setTimeout(() => {
       io.to(game.creator.socket).emit('setPlayer', game.creator.gameId);
@@ -181,7 +172,6 @@ io.on('connection', (socket) => {
     }, 500);
 
     const participants = getParticipantsBySocketId(socket.id);
-    console.log('participants', participants);
     setTimeout(() => {
       const randomXorO = getRandomXorO();
       io.to(
@@ -194,7 +184,6 @@ io.on('connection', (socket) => {
 
   // toggle
   socket.on('toggle', (data) => {
-    console.log('toggle', data);
     const oppositeSocketId = getOppositeSocketId(socket.id);
 
     io.to(oppositeSocketId).emit('toggle', data);
@@ -210,7 +199,6 @@ io.on('connection', (socket) => {
 
   // next game
   socket.on('nextGame', (data) => {
-    console.log('nextGame', data);
     const oppositeSocketId = getOppositeSocketId(socket.id);
     io.to(oppositeSocketId).emit('nextGame');
 
@@ -227,8 +215,6 @@ io.on('connection', (socket) => {
     const gameId = getGameIdBySocketId(socket.id);
     const game = games.get(gameId);
 
-    console.log({ gameId, game });
-
     const getGameOpponent = (game, socketId) => {
       if (game && game.creator.socket === socketId) {
         return game.opponent.socket;
@@ -239,8 +225,6 @@ io.on('connection', (socket) => {
 
     const gameOpponent = getGameOpponent(game, socket.id);
 
-    console.log({ gameOpponent: gameOpponent });
-
     if (game && gameOpponent) {
       io.to(gameOpponent).emit('endGame');
     }
@@ -249,7 +233,6 @@ io.on('connection', (socket) => {
   });
 
   socket.on('deleteGame', () => {
-    console.log('deleteGame backend');
     const gameId = getGameIdBySocketId(socket.id);
     games.delete(gameId);
   });
@@ -260,7 +243,6 @@ io.on('connection', (socket) => {
 
     // opponent leave event
     const gameId = getGameIdBySocketId(socket.id);
-    console.log({ gameId });
     if (gameId) {
       io.to(gameId).emit('opponentLeft');
     }
@@ -287,6 +269,11 @@ app.disable('x-powered-by');
 app.use(
   morgan(ENVIRONMENT.APP.ENV !== 'local' ? 'combined' : 'dev', { stream })
 );
+
+// ping
+app.get('/ping', (req, res) => {
+  return res.status(200).json({ success: true });
+});
 
 // append request time to all request
 app.use((req, res, next) => {
