@@ -175,19 +175,21 @@ io.on('connection', (socket) => {
     game = games.get(gameId);
     console.log('game', game);
 
-    const participants = getParticipantsBySocketId(socket.id);
-    console.log('participants', participants);
     setTimeout(() => {
       io.to(game.creator.socket).emit('setPlayer', game.creator.gameId);
       io.to(game.opponent.socket).emit('setPlayer', game.opponent.gameId);
+    }, 500);
 
+    const participants = getParticipantsBySocketId(socket.id);
+    console.log('participants', participants);
+    setTimeout(() => {
       const randomXorO = getRandomXorO();
       io.to(
         participants.filter(
           (participant) => participant.gameId === randomXorO
         )[0].socket
       ).emit('startingPlayer');
-    }, 200);
+    }, 1000);
   });
 
   // toggle
@@ -213,16 +215,41 @@ io.on('connection', (socket) => {
     io.to(oppositeSocketId).emit('nextGame');
 
     const participants = getParticipantsBySocketId(socket.id);
-    io.to(
-      participants.filter((participant) => participant.gameId !== data)[0]
-        .socket
-    ).emit('startingPlayer');
+    setTimeout(() => {
+      io.to(
+        participants.filter((participant) => participant.gameId !== data)[0]
+          .socket
+      ).emit('startingPlayer');
+    }, 500);
   });
 
   socket.on('endGame', () => {
-    const oppositeSocketId = getOppositeSocketId(socket.id);
-    io.to(oppositeSocketId).emit('endGame');
+    const gameId = getGameIdBySocketId(socket.id);
+    const game = games.get(gameId);
 
+    console.log({ gameId, game });
+
+    const getGameOpponent = (game, socketId) => {
+      if (game && game.creator.socket === socketId) {
+        return game.opponent.socket;
+      } else {
+        return game.creator.socket;
+      }
+    };
+
+    const gameOpponent = getGameOpponent(game, socket.id);
+
+    console.log({ gameOpponent: gameOpponent });
+
+    if (game && gameOpponent) {
+      io.to(gameOpponent).emit('endGame');
+    }
+
+    games.delete(gameId);
+  });
+
+  socket.on('deleteGame', () => {
+    console.log('deleteGame backend');
     const gameId = getGameIdBySocketId(socket.id);
     games.delete(gameId);
   });
@@ -230,6 +257,13 @@ io.on('connection', (socket) => {
   // Disconnect event
   socket.on('disconnect', () => {
     console.log('User disconnected ====== ', socket.id);
+
+    // opponent leave event
+    const gameId = getGameIdBySocketId(socket.id);
+    console.log({ gameId });
+    if (gameId) {
+      io.to(gameId).emit('opponentLeft');
+    }
   });
 });
 
